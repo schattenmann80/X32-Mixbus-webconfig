@@ -1,0 +1,526 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+		<meta name="theme-color" content="#121212">
+
+		<link rel="shortcut icon" href="mix.png" type="image/x-icon">
+
+		<title>X32 Mix</title>
+
+
+		<style>
+
+			.BoxContainer
+			{
+				display: flex;
+				justify-content: center;
+				flex-direction: row;
+  				flex-wrap: wrap;
+				margin: 20px 0 20px 0;
+			}
+
+			/* #MixbusHeader{
+				display: flex;
+				justify-content: center;
+			} */
+
+			.ChannelSummery
+			{
+				font-size: 1.3em;
+				margin: 20px;
+			}
+
+			.Channels
+			{
+				border: black solid;
+				padding: 3px;
+				margin: 3px;
+				text-decoration: none;
+				width: 100px;
+				/* min-width: 68px; */
+				min-height: 40px;
+				text-align: center;
+				background: aquamarine;
+			}
+
+			.container {
+				display: block;
+				justify-content: center;
+			}
+
+			.MixbusSelect {
+				/* border: black solid; */
+				border-style: solid;
+				border-color: black;
+				padding: 5px;
+				margin: 5px;
+				text-decoration: none;
+				background-color: yellow;
+			}
+
+			.flexBreak
+			{
+				flex-basis: 100%;
+				/* height: 0; */
+			}
+
+			.faderContainer
+			{
+				width: 100%; 
+				display: flex;
+				flex-wrap: wrap;
+				padding-bottom: 15px;
+				padding-top: 15px;
+			}
+
+			.faderValue
+			{
+				display: block;
+				min-width: 40px;
+				margin: 5px;
+			}
+
+			.faderName
+			{
+				display: block;
+				margin: 5px;
+				min-width: 170px;
+			}
+
+			.MuteButton
+			{
+				display: flex;
+  				padding: 5px;
+				/* background: darkred; */
+				border: solid black 0.5px;
+				text-decoration: none;
+				color: white;
+			}
+		
+		</style>
+
+		<!-- Utils -->
+		<script> 
+			async function CallRestPOST( url, inputData, functionToCall )
+			{			
+				return await fetch( url, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify( inputData )
+				})
+				.then(response =>  response.json())
+				.then( data => {
+					if( functionToCall == null ) return data;
+					return functionToCall( data );
+				})
+				.catch(err => console.log(err));
+			}
+
+			class X32Color
+			{
+				static color = {
+					0: "none",
+					1: "red",
+					2: "green",
+					3: "yellow",
+					4: "blue",
+					5: "fuchsia",
+					6: "aqua",
+					7: "white",
+					8: "none",
+					9: "#dd3e00",
+					10: "lightgreen",
+					11: "#f7f79d",
+					12: "lightblue",
+					13: "#ff8aff",
+					14: "#b4f7f7",
+					15: "white",
+				};
+
+				static GetColor( id, defaultcolor )
+				{
+					if( id < 1 || id > 15 ) return defaultcolor;
+					return this.color[id];
+				}
+			}
+
+			class X32float
+			{
+				static ConvertFloatToDezibel( value )
+				{
+					let retval = 0;
+					if (value >= 0.5)  retval = value * 40.0 - 30.0;
+					else if (value >= 0.25)  retval = value * 80.0 - 50.0;
+					else if (value >= 0.0625)  retval = value * 160.0 - 70.0;
+					else if (value >= 0.0) retval = value * 480.0 - 90.0;
+					else retval = 0;
+					retval = retval.toFixed(1);
+					return retval;
+				}
+
+				static ConvertDezibelToFloat( dB )
+				{
+					if (dB < -60 ) return (dB + 90) / 480;
+					else if (dB < -30) return (dB + 70) / 160;
+					else if (dB < -10) return (dB + 50) / 80;
+					else if (dB <= 10 ) return (dB + 30) / 40;
+					return 0;
+				}
+			}
+		</script>
+
+		<script>
+			const g_FaderStepSize = "0.001";
+
+			class Mixbus
+			{
+				constructor( id)
+				{
+					this.ID = id;
+					this.on = false;
+					this.fader = 0;
+				}
+
+				GetMuteColor()
+				{
+					if( this.on == false ) return "red";
+					return "darkred";
+				}
+
+				Display( container )
+				{
+					container.innerHTML += `<div id="fader_0" class="faderContainer"><input id="mixbus-fader" style="width: 90%;" type="range" min="0" max="1" step="${g_FaderStepSize}" value="${this.fader}" ` + 
+					` oninput="this.nextElementSibling.value = X32float.ConvertFloatToDezibel(this.value)" onchange="g_Mixbus.Change( this.value );" ></input>` + 
+					`<output class="faderValue" >${X32float.ConvertFloatToDezibel(this.fader)}</output><div class="faderName">Master Mixbus ${this.ID}: </div>` + 
+					`<a id="mute-${this.ID}" style="background: ${this.GetMuteColor()};" class="MuteButton" href="javascript:g_Mixbus.Mute();">Mute</a></div>`;
+				}
+
+				Change( value )
+				{
+					this.fader = value;
+
+					let req = { "requests": [new RequestData( 1, "SetMixBusFaderLevel", {"mixbus": this.ID, "level": this.fader } )] };
+					CallRestPOST( "REST/x32.php", req, data => {});
+				}
+
+				Mute()
+				{
+					this.on = ! this.on;
+					const mutebutton = document.getElementById( "mute-" + this.ID );
+					mutebutton.style.background = this.GetMuteColor();
+
+					let req = { "requests": [new RequestData( 1, "SetMixBusOnOrOff", { "mixbus": this.ID, "on_or_off": this.on } )] };
+					CallRestPOST( "REST/x32.php", req, data => {});
+				}
+
+				static ResetBorderColor()
+				{
+					const mixbusButtons = document.getElementsByClassName( "MixbusSelect" );
+					for( let cnt = 0; cnt < mixbusButtons.length; cnt++ )
+					{
+						mixbusButtons[cnt].style["border-color"] = "";
+					}
+				}
+
+				static SelectMixbus( id )
+				{
+					if( id == -1 )
+					{
+						if( g_Config.MIXBUS_LIST.length == 0 ) return;
+						id = g_Config.MIXBUS_LIST[0];
+					}
+
+					g_Mixbus = new Mixbus(id);
+
+					let request = { "requests": [] };
+					request.requests.push( new RequestData( 1, "GetMixBusOnOrOff", {"mixbus" : id } ) );
+					request.requests.push( new RequestData( 2, "GetMixBusFaderLevel", {"mixbus": id } ) );
+
+					Mixbus.ResetBorderColor();
+					const mixbus = document.getElementById( "mixbus-" + id );
+					mixbus.style["border-color"] = "red";
+
+					CallRestPOST( "REST/x32.php", request, data => {
+						g_Mixbus.on = data.Answers[1].data;
+						g_Mixbus.fader = data.Answers[2].data;
+
+						const source_container = document.getElementById("source_container");
+						source_container.innerHTML = "";
+						g_Mixbus.Display( source_container );
+						SendToBusData.LoadAll();
+					});
+				}
+
+				static DisplayMixbusButtons()
+				{
+					const MixbusHeader = document.getElementById( "MixbusHeader" );
+					g_Config.MIXBUS_LIST.forEach(element => {
+						// 	<a class="MixbusSelect" id="mixbus-5" href="javascript:Mixbus.SelectMixbus( 5 );">Mix 5</a>
+						MixbusHeader.innerHTML += `<a class="MixbusSelect" id="mixbus-${element}" href="javascript:Mixbus.SelectMixbus( ${element} );">Mix ${element}</a>`
+					});
+				}
+			}
+
+			class SendToBusData 
+			{
+				constructor( id, channel, mixbus, on, level )
+				{
+					this.ID = id;
+					this.channel = channel;
+					this.mixbus = mixbus;
+					this.on = on;
+					this.level = level;
+				}
+
+				GetMuteColor()
+				{
+					if( this.on == false ) return "red";
+					return "darkred";
+				}
+
+				GetColor()
+				{
+					if( g_Config.DISPLAY_CHANNEL_COLOR == "OFF" ) return "";
+					return "background: " + ChannelData.GetColor( this.channel );
+				}
+
+				Display( container, sort )
+				{
+					container.innerHTML += `<div id="fader_${this.ID}" style="${this.GetColor()}" class="faderContainer"><input style="width: 90%;" type="range" min="0" step="${g_FaderStepSize}" max="1" value="${this.level}" ` + 
+					` oninput="this.nextElementSibling.value = X32float.ConvertFloatToDezibel(this.value)" onchange="SendToBusData.ChangeStatic( ${this.ID}, this.value );"></input>` + 
+					`<output class="faderValue" >${X32float.ConvertFloatToDezibel(this.level)}</output><div class="faderName"> Channel ${this.channel}: ${ChannelData.GetName(this.ID)}</div>` + 
+					`<a id="mute-channel-${this.ID}" style="background: ${this.GetMuteColor()};" class="MuteButton" href="javascript:SendToBusData.MuteStatic( ${this.ID} );">Mute</a></div>`;
+
+					if( sort ) SendToBusData.SortAndSetColor( container );
+				}
+
+				static SortAndSetColor( container )
+				{
+					let cnt = 0;
+					[].map.call( container.children, Object ).sort( function ( a, b ) {
+						return +a.id.match( /\d+/ ) - +b.id.match( /\d+/ );
+					}).forEach( function ( elem ) {
+						cnt++;
+						if( g_Config.DISPLAY_CHANNEL_COLOR == "OFF" )
+						{
+							elem.style.background = "#cde7fd";
+							if( cnt % 2 ) elem.style.background = "#c0f4ac";
+						}
+						if( cnt == 1 ) elem.style.background = "rgb(232, 160, 143)";
+						container.appendChild( elem );
+					});
+				}
+
+				Mute()
+				{
+					this.on = ! this.on;
+					const mutebutton = document.getElementById( "mute-channel-" + this.ID );
+					mutebutton.style.background = this.GetMuteColor();
+
+					let req = { "requests": [new RequestData( 1, "SetMuteSendToMixBus", {"channel": this.channel, "mixbus": this.mixbus, "on_or_off": this.on } )] };
+					CallRestPOST( "REST/x32.php", req, data => {});
+				}
+
+				Change( value )
+				{
+					this.level = value;
+
+					//console.log("Change" + this.level );
+					let req = { "requests": [new RequestData( 1, "SetLevelSendToMixBus", { "channel": this.channel, "mixbus": this.mixbus, "level": this.level } )] };
+					CallRestPOST( "REST/x32.php", req, data => {});
+				}
+
+				static ChangeStatic( id, value )
+				{
+					if( id in g_SendToBusData )
+					{
+						g_SendToBusData[id].Change( value );
+					}
+				}
+
+				GetLevelServerRequest( RequestID )
+				{
+					return new RequestData( RequestID, "GetLevelSendToMixbus", {"channel": this.channel, "mixbus": this.mixbus } );
+				}
+
+				GetMuteServerRequest( RequestID )
+				{
+					return new RequestData( RequestID, "GetMuteSendToMixBus", {"channel": this.channel, "mixbus": this.mixbus } );
+				}
+
+				GetServerData()
+				{
+					let req = { "requests": [] };
+					req.requests.push( new RequestData( 1, "GetLevelSendToMixbus", {"channel": this.channel, "mixbus": g_Mixbus.ID } ) )
+					req.requests.push( new RequestData( 2, "GetMuteSendToMixBus", {"channel": this.channel, "mixbus": g_Mixbus.ID } ) )
+					CallRestPOST( "REST/x32.php", req, data => {
+						this.level = data.Answers[1].data;
+						this.on = data.Answers[2].data;
+						this.Display( document.getElementById("source_container"), true );
+					});
+				}
+
+				static LoadAll()
+				{
+					g_SendToBusData = {};
+					let req = { "requests": [] };
+					for( let cnt = 1; cnt <= 32; cnt++ )
+					{
+						req.requests.push( new RequestData( cnt, "GetLevelSendToMixbus", {"channel": cnt, "mixbus": g_Mixbus.ID } ) )
+					}
+					
+					for( let cnt = 1; cnt <= 32; cnt++ )
+					{
+						req.requests.push( new RequestData( cnt + 32, "GetMuteSendToMixBus", {"channel": cnt, "mixbus": g_Mixbus.ID } ) )
+					}
+
+					const source_container = document.getElementById("source_container");
+
+					CallRestPOST( "REST/x32.php", req, data => {
+						for( let cnt = 1; cnt <= 32; cnt++ )
+						{
+							if( data.Answers[cnt].data > 0.08 )
+							{
+								g_SendToBusData[cnt] = new SendToBusData( cnt, cnt, g_Mixbus.ID, data.Answers[32+cnt].data, data.Answers[cnt].data );
+								g_SendToBusData[cnt].Display( source_container, false );
+							}
+						}
+						SendToBusData.SortAndSetColor( source_container );
+					});
+				}
+
+				static MuteStatic( id )
+				{
+					if( id in g_SendToBusData )
+					{
+						g_SendToBusData[id].Mute();
+					}
+				}
+			}
+
+			class ChannelData 
+			{
+				constructor( id, color, name )
+				{
+					this.channel = id;
+					this.color = color;
+					this.name = name;
+				}
+
+				Display( )
+				{
+					return `<div style="background: ${X32Color.GetColor(this.color, 'aquamarine' )};" class="Channels" id="Channel-${this.channel}" onclick="ChannelData.AddChannel(${this.channel});" >${this.channel} - ${this.name}</div>`;
+				}
+
+				static DisplayAll( container )
+				{
+					let content = "";
+					for ( const [key, value] of Object.entries(g_Channels) ) {
+						content += value.Display();
+					}
+					container.innerHTML = content;
+				}
+
+				static AddChannel( id )
+				{
+					if( ! (id in g_SendToBusData) )
+					{
+						g_SendToBusData[id] = new SendToBusData( id, id, g_Mixbus.ID, 0, -90 );
+						g_SendToBusData[id].GetServerData();
+					}
+				}
+
+				static GetColor( id )
+				{
+					if( id in g_Channels )
+					{
+						return X32Color.GetColor(g_Channels[id].color);
+					}
+					return "";
+				}
+
+				static GetName( id )
+				{
+					if( id in g_Channels )
+					{
+						return g_Channels[id].name;
+					}
+					return "";
+				}
+
+				static loadChannelData( )
+				{
+					let request = { "requests": [] };
+					for( let cnt = 1; cnt <= 32; cnt++ )
+					{
+						request.requests.push( new RequestData( cnt, "GetChannelName", {"channel" : cnt} ) );
+						request.requests.push( new RequestData( cnt + 32, "GetChannelColor", {"channel" : cnt} ) );
+					}
+					CallRestPOST( "REST/x32.php", request, data => {
+						// console.log( data );
+						
+						// for ( const [key, value] of Object.entries(data.Answers) ) {
+						// 	g_Channels[value.id] = new ChannelData( value.id, "", value.data );
+						// };
+						for( let cnt = 1; cnt <= 32; cnt++ )
+						{
+							g_Channels[data.Answers[cnt].id] = new ChannelData( data.Answers[cnt].id, data.Answers[cnt+32].data, data.Answers[cnt].data );
+						}
+
+						const ChannelDiv = document.getElementById("ChannelDiv");
+						ChannelData.DisplayAll( ChannelDiv );
+					} );
+				}
+			}
+
+			class RequestData
+			{
+				constructor( id, func, data )
+				{
+					this.id = id;
+					this.func = func;
+					this.data = data;
+				}
+			}
+
+			let g_Mixbus = new Mixbus(1);
+			let g_Channels = {};
+			let g_SendToBusData = {};
+			let g_Config = {};
+
+			async function loadConfig()
+			{
+				await CallRestPOST( "REST/config.php", {}, data => {
+					g_Config = data.config;
+				});
+			}
+
+			window.onload = function() 
+			{
+				ChannelData.loadChannelData( );
+				loadConfig().then( res => {
+					Mixbus.DisplayMixbusButtons();
+					Mixbus.SelectMixbus( -1 );
+				})
+			};
+
+		</script>
+		
+	</head>
+	<body>
+		<main>
+			<div class="BoxContainer" id="MixbusHeader" >
+			</div>
+
+			<details>
+				<summary class="ChannelSummery">Add channel</summary>
+				<div class="BoxContainer" id="ChannelDiv"></div>
+			</details>
+
+			<div class="container" id="source_container" style="margin: 5px;" >
+			</div>
+		</main>
+	</body>
+</html>                              
