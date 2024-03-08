@@ -18,13 +18,13 @@ But if it is just some small question, then I will probable answer.
 - php 7.4 and 8.2
 
 ## Installation:
-1. Copy Repo inside a folter witch is accessable over the webserver.
+1. Copy the repo inside a folter witch is accessable over the webserver.
 2. Open file config.ini
    1.  Set parameter X32_IP to the IP of your X32.
-   2.  Config parameter MIXBUS_LIST. This is the list of mixbuses you like to mix through the application.
+   2.  Config parameter MIXBUS_LIST. This is the list of mixbuses you like to mix through the application. For example MIXBUS_LIST = "5,6,7,8,9" to mix the mixbuses 5 to 9 like showen in the pictures.
   
 ## Use:
-Open the website on your webserver mix.html.
+Open the side mix.html on your webserver.
 Choose an Mixbus on top.
 Add some channels.
 Make your mix.
@@ -33,7 +33,7 @@ Make your mix.
 ### On PC
 ![Screenshot 2024-02-18 162317](https://github.com/schattenmann80/X32-Mixbus-webconfig/assets/22788790/8f62b185-a928-416f-bf62-602b3f765c81)
 
-### ON Mobile
+### On Mobile
 ![Screenshot 2024-02-18 162410](https://github.com/schattenmann80/X32-Mixbus-webconfig/assets/22788790/3a4fe4f1-c662-4397-affa-cdc72a0f01c8)
 
 ### With config DISPLAY_CHANNEL_COLOR set to ON
